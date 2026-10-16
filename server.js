@@ -21,7 +21,9 @@ const {
 const {
     tvly,
     searchWeb,
+    cleanResearchAnswer,
     validateCitationUrls,
+    rankSourcesByRelevance,
 } = require("./researchUtils");
 
 const { verifyClaim } = require("./verificationService");
@@ -114,19 +116,47 @@ app.post("/api/research", async (req, res) => {
         }
 
         // Search the web using Tavily
+        // Prepare the claim before searching
+        const claimToVerify = cleanQuestion
+            .replace(
+                /^(please\s+)?(verify|fact-check|check)\s+(the\s+claim\s+that\s+)?/i,
+                ""
+            )
+            .replace(/[?]+$/, "")
+            .trim();
+
+        // Search the web using Tavily
         let sources = [];
 
         if (tvly) {
             try {
-                sources = await searchWeb(cleanQuestion);
-            } catch (error) {
-                console.error(
-                    "Tavily search failed:",
-                    error.message
+                const researchSources = await searchWeb(cleanQuestion);
+
+                const verificationSources = await searchWeb(
+                    `${claimToVerify} official source history facts`
                 );
+
+                // Combine sources and remove duplicate URLs
+                const uniqueSources = new Map();
+
+                for (const source of [
+                    ...researchSources,
+                    ...verificationSources,
+                ]) {
+                    if (
+                        source.url &&
+                        source.content &&
+                        !uniqueSources.has(source.url)
+                    ) {
+                        uniqueSources.set(source.url, source);
+                    }
+                }
+
+                sources = [...uniqueSources.values()];
+            } catch (error) {
+                console.error("Tavily search failed:", error.message);
             }
         }
-
         // Try providers in order: Gemini -> Groq -> Hugging Face
         let answer;
         let provider;
@@ -195,53 +225,109 @@ app.post("/api/research", async (req, res) => {
         }
 
         // Allow citation links only when their URLs match search results
-      const validatedAnswer = validateCitationUrls(answer, sources);
+        // const validatedAnswer = validateCitationUrls(answer, sources);
 
         // Extract a small number of report claims for the MVP
-        const claimCandidates = validatedAnswer
-            .replace(/^#{1,6}\s.*$/gm, "")
-            .split(/(?<=[.!?])\s+/)
-            .map((sentence) =>
-                sentence
-                    .replace(
-                        /\[([^\]]+)\]\(https?:\/\/[^)]+\)/g,
-                        "$1"
-                    )
-                    .trim()
-            )
-            .filter(
-                (sentence) =>
-                    sentence.length > 40 &&
-                    !sentence.startsWith("```")
-            )
-            .slice(0, 5);
 
-        // Verify claims without failing the whole research request
+        // const claimCandidates = validatedAnswer
+        //     .replace(/```[\s\S]*?```/g, "")
+        //     .replace(/^#{1,6}\s.*$/gm, "")
+        //     // Remove complete Markdown citations, including their titles and URLs.
+        //     .replace(/\[([^\]]+)\]\(https?:\/\/[^)\s]+\)/g, "")
+        //     // Remove any remaining URLs.
+        //     .replace(/https?:\/\/\S+/g, "")
+        //     // Remove leftover citation-title fragments.
+        //     .replace(/\b(?:What is Python\?|Python\.org|Teradata|AWS|W3Schools|General Python FAQ)\b/gi, "")
+        //     .split(/(?<=[.!?])\s+/)
+
+
+        // .map((sentence) =>
+        //   sentence
+        //     .replace(/\s+/g, " ")
+        //     .replace(/\s+([.,!?;:])/g, "$1")
+        //     .replace(/([.,!?;:])(?:\s*[.,!?;:])+/g, "$1")
+        //     .replace(/[.,!?;:\s]+$/, "")
+        //     .trim()
+        // )
+
+        //     .filter(
+        //         (sentence) =>
+        //             sentence.length > 40 &&
+        //             !sentence.includes("](") &&
+        //             !/^(\d+\.|\*|-)\s*$/.test(sentence)
+        //     )
+        //     .slice(0, 5);
+
+
+        //         // Verify claims without failing the whole research request
+        //         const claimChecks = [];
+
+        //         for (const claim of claimCandidates) {
+        //             try {
+        //                 const result = await verifyClaim(
+        //                     claim,
+        //                     sources
+        //                 );
+
+        //                 claimChecks.push(result);
+        //             } catch (error) {
+        //                 console.error(
+        //                     "Claim check failed:",
+        //                     error.message
+        //                 );
+
+        //                 claimChecks.push({
+        //                     claim,
+        //                     status: "insufficient_evidence",
+        //                     explanation:
+        //                         "Verification could not be completed.",
+        //                     sourceUrls: [],
+        //                 });
+        //             }
+        //         }
+
+        // Allow citation links only when their URLs match search results
+        const validatedAnswer = validateCitationUrls(answer, sources);
+
+        // Verify the original user claim instead of report sentences.
         const claimChecks = [];
 
-        for (const claim of claimCandidates) {
-            try {
-                const result = await verifyClaim(
-                    claim,
-                    sources
-                );
 
+
+        if (claimToVerify.length > 0) {
+            try {
+                // Rank sources by relevance to the claim
+                const relevantSources = rankSourcesByRelevance(
+                    claimToVerify,
+                    sources
+                ).slice(0, 5);
+
+                const result = await verifyClaim(
+                    claimToVerify,
+                    relevantSources
+                );
                 claimChecks.push(result);
             } catch (error) {
-                console.error(
-                    "Claim check failed:",
-                    error.message
-                );
+                console.error("Claim check failed:", error.message);
 
                 claimChecks.push({
-                    claim,
+                    claim: claimToVerify,
                     status: "insufficient_evidence",
                     explanation:
-                        "Verification could not be completed.",
+                        "Verification could not be completed using the available sources.",
                     sourceUrls: [],
                 });
             }
         }
+
+        // Return the completed research response
+        return res.status(200).json({
+            success: true,
+            answer: validatedAnswer,
+            provider,
+            sources,
+            claimChecks,
+        });
 
         // Return the completed research response
         return res.status(200).json({
