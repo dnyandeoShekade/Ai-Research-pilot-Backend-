@@ -1,7 +1,7 @@
 
 const path = require("path");
 
-// Load environment variables BEFORE importing services
+// Load environment variables first
 require("dotenv").config({
     path: path.join(__dirname, ".env"),
 });
@@ -9,13 +9,18 @@ require("dotenv").config({
 const express = require("express");
 const cors = require("cors");
 
+const connectDB = require("./utils/db");
+
+const documentRoutes = require("./routes/documentRoutes");
+const { retrieveRelevantChunks } = require("./utils/retrievalService");
 const {
-    ai,
-    groq,
-    hf,
-    askGemini,
-    askGroq,
-    askHuggingFace,
+  ai,
+  groq,
+  hf,
+  askGemini,
+  askGroq,
+  askHuggingFace,
+  askDocumentAI,
 } = require("./aiService");
 
 const {
@@ -31,6 +36,7 @@ const { verifyClaim } = require("./verificationService");
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+
 // Middleware
 app.use(
     cors({
@@ -41,6 +47,7 @@ app.use(
 );
 
 app.use(express.json({ limit: "20kb" }));
+app.use("/api/documents", documentRoutes);
 
 // Health check
 app.get("/api/health", (req, res) => {
@@ -78,6 +85,78 @@ app.get("/api/models", (req, res) => {
             },
         ],
     });
+});
+
+app.post("/api/documents/ask", async (req, res) => {
+  try {
+    const { question, documentId } = req.body || {};
+
+    if (typeof question !== "string" || !question.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: "Please provide a question.",
+      });
+    }
+
+    if (question.trim().length > 2000) {
+      return res.status(400).json({
+        success: false,
+        error: "Question must be 2000 characters or fewer.",
+      });
+    }
+
+    if (
+      documentId !== undefined &&
+      (typeof documentId !== "string" ||
+        !/^[a-f\d]{24}$/i.test(documentId))
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid document ID.",
+      });
+    }
+
+    const chunks = await retrieveRelevantChunks(
+      question.trim(),
+      documentId,
+      4
+    );
+
+    if (chunks.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "No document chunks found. Upload a PDF first.",
+      });
+    }
+
+    const context = chunks
+      .map(
+        (chunk, index) =>
+          `[Source ${index + 1}: ${chunk.filename}, chunk ${chunk.chunkIndex}]\n${chunk.text}`
+      )
+      .join("\n\n");
+
+    const result = await askDocumentAI(question.trim(), context);
+
+    return res.status(200).json({
+      success: true,
+      question: question.trim(),
+      answer: result.answer,
+      provider: result.provider,
+      sources: chunks.map((chunk) => ({
+        filename: chunk.filename,
+        chunkIndex: chunk.chunkIndex,
+        similarity: Number(chunk.score.toFixed(4)),
+      })),
+    });
+  } catch (error) {
+    console.error("Document Q&A error:", error.message);
+
+    return res.status(500).json({
+      success: false,
+      error: "Failed to answer the document question.",
+    });
+  }
 });
 
 // Main research endpoint
@@ -224,67 +303,7 @@ app.post("/api/research", async (req, res) => {
             });
         }
 
-        // Allow citation links only when their URLs match search results
-        // const validatedAnswer = validateCitationUrls(answer, sources);
 
-        // Extract a small number of report claims for the MVP
-
-        // const claimCandidates = validatedAnswer
-        //     .replace(/```[\s\S]*?```/g, "")
-        //     .replace(/^#{1,6}\s.*$/gm, "")
-        //     // Remove complete Markdown citations, including their titles and URLs.
-        //     .replace(/\[([^\]]+)\]\(https?:\/\/[^)\s]+\)/g, "")
-        //     // Remove any remaining URLs.
-        //     .replace(/https?:\/\/\S+/g, "")
-        //     // Remove leftover citation-title fragments.
-        //     .replace(/\b(?:What is Python\?|Python\.org|Teradata|AWS|W3Schools|General Python FAQ)\b/gi, "")
-        //     .split(/(?<=[.!?])\s+/)
-
-
-        // .map((sentence) =>
-        //   sentence
-        //     .replace(/\s+/g, " ")
-        //     .replace(/\s+([.,!?;:])/g, "$1")
-        //     .replace(/([.,!?;:])(?:\s*[.,!?;:])+/g, "$1")
-        //     .replace(/[.,!?;:\s]+$/, "")
-        //     .trim()
-        // )
-
-        //     .filter(
-        //         (sentence) =>
-        //             sentence.length > 40 &&
-        //             !sentence.includes("](") &&
-        //             !/^(\d+\.|\*|-)\s*$/.test(sentence)
-        //     )
-        //     .slice(0, 5);
-
-
-        //         // Verify claims without failing the whole research request
-        //         const claimChecks = [];
-
-        //         for (const claim of claimCandidates) {
-        //             try {
-        //                 const result = await verifyClaim(
-        //                     claim,
-        //                     sources
-        //                 );
-
-        //                 claimChecks.push(result);
-        //             } catch (error) {
-        //                 console.error(
-        //                     "Claim check failed:",
-        //                     error.message
-        //                 );
-
-        //                 claimChecks.push({
-        //                     claim,
-        //                     status: "insufficient_evidence",
-        //                     explanation:
-        //                         "Verification could not be completed.",
-        //                     sourceUrls: [],
-        //                 });
-        //             }
-        //         }
 
         // Allow citation links only when their URLs match search results
         const validatedAnswer = validateCitationUrls(answer, sources);
@@ -330,13 +349,13 @@ app.post("/api/research", async (req, res) => {
         });
 
         // Return the completed research response
-        return res.status(200).json({
-            success: true,
-            answer: validatedAnswer,
-            provider,
-            sources,
-            claimChecks,
-        });
+        // return res.status(200).json({
+        //     success: true,
+        //     answer: validatedAnswer,
+        //     provider,
+        //     sources,
+        //     claimChecks,
+        // });
     } catch (error) {
         console.error(
             "Research endpoint error:",
@@ -424,17 +443,30 @@ app.use((error, req, res, next) => {
 
     next(error);
 });
+async function startServer() {
+    try {
+        await connectDB();
 
+        app.listen(PORT, () => {
+            console.log(`ResearchPilot backend running at http://localhost:${PORT}`);
+        });
+    } catch (error) {
+        console.error("Failed to start server:", error.message);
+        process.exit(1);
+    }
+}
+
+startServer();
 // Start server
-app.listen(PORT, () => {
-    console.log(
-        `ResearchPilot backend running at http://localhost:${PORT}`
-    );
+// app.listen(PORT, () => {
+//     console.log(
+//         `ResearchPilot backend running at http://localhost:${PORT}`
+//     );
 
-    console.log("Configured services:", {
-        gemini: Boolean(ai),
-        groq: Boolean(groq),
-        huggingface: Boolean(hf),
-        tavily: Boolean(tvly),
-    });
-});
+//     console.log("Configured services:", {
+//         gemini: Boolean(ai),
+//         groq: Boolean(groq),
+//         huggingface: Boolean(hf),
+//         tavily: Boolean(tvly),
+//     });
+// });
