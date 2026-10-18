@@ -1,4 +1,5 @@
-﻿const chunkText = require("./utils/textChunker");
+
+const chunkText = require("./utils/textChunker");
 
 const sampleText = `
 Retrieval Augmented Generation (RAG) helps AI
