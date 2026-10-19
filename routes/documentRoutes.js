@@ -1,4 +1,5 @@
 
+
 const express = require("express");
 const multer = require("multer");
 const { PDFParse } = require("pdf-parse");
@@ -36,6 +37,8 @@ router.post("/upload", upload.single("pdf"), async (req, res) => {
     }
 
     // Extract PDF text
+   
+    // Extract PDF text
     parser = new PDFParse({
       data: req.file.buffer,
     });
@@ -51,7 +54,9 @@ router.post("/upload", upload.single("pdf"), async (req, res) => {
     }
 
     // Split the extracted text into chunks
-    if (chunks.length === 0) {
+    const chunks = chunkText(text);
+
+    if (!chunks || chunks.length === 0) {
       return res.status(400).json({
         success: false,
         message: "No usable text chunks were generated from this PDF.",
@@ -61,6 +66,7 @@ router.post("/upload", upload.single("pdf"), async (req, res) => {
     console.log("PDF pages:", pdfData.total);
     console.log("Total characters:", text.length);
     console.log("Total chunks:", chunks.length);
+
 
     // Generate an embedding for each chunk
     const chunksWithEmbeddings = [];

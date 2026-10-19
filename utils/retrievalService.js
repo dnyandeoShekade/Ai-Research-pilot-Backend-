@@ -30,32 +30,74 @@ function cosineSimilarity(vectorA, vectorB) {
 }
 
 // Find the most relevant chunks for a question
+// async function retrieveRelevantChunks(question, documentId, limit = 4) {
+//   const queryEmbedding = await generateEmbedding(
+//     question,
+//     "search_query"
+//   );
+
+//   const filter = documentId ? { _id: documentId } : {};
+
+//   const documents = await Document.find(filter).select("filename chunks");
+
+//   const results = [];
+
+//   for (const document of documents) {
+//     for (const chunk of document.chunks) {
+//       if (!chunk.embedding || chunk.embedding.length !== queryEmbedding.length) {
+//         continue;
+//       }
+
+//       results.push({
+//         filename: document.filename,
+//         documentId: document._id,
+//         chunkIndex: chunk.index,
+//         text: chunk.text,
+//         score: cosineSimilarity(queryEmbedding, chunk.embedding),
+//       });
+//     }
+//   }
+
+//   results.sort((a, b) => b.score - a.score);
+
+//   return results.slice(0, limit);
+// }
+
 async function retrieveRelevantChunks(question, documentId, limit = 4) {
+  if (!documentId) {
+    throw new Error("Please upload and select a PDF first.");
+  }
+
   const queryEmbedding = await generateEmbedding(
     question,
     "search_query"
   );
 
-  const filter = documentId ? { _id: documentId } : {};
+  // Search ONLY inside the selected PDF
+  const document = await Document.findById(documentId)
+    .select("filename chunks");
 
-  const documents = await Document.find(filter).select("filename chunks");
+  if (!document) {
+    throw new Error("Selected PDF was not found.");
+  }
 
   const results = [];
 
-  for (const document of documents) {
-    for (const chunk of document.chunks) {
-      if (!chunk.embedding || chunk.embedding.length !== queryEmbedding.length) {
-        continue;
-      }
-
-      results.push({
-        filename: document.filename,
-        documentId: document._id,
-        chunkIndex: chunk.index,
-        text: chunk.text,
-        score: cosineSimilarity(queryEmbedding, chunk.embedding),
-      });
+  for (const chunk of document.chunks) {
+    if (
+      !chunk.embedding ||
+      chunk.embedding.length !== queryEmbedding.length
+    ) {
+      continue;
     }
+
+    results.push({
+      filename: document.filename,
+      documentId: document._id.toString(),
+      chunkIndex: chunk.index,
+      text: chunk.text,
+      score: cosineSimilarity(queryEmbedding, chunk.embedding),
+    });
   }
 
   results.sort((a, b) => b.score - a.score);

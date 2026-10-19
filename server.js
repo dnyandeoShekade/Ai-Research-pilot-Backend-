@@ -14,13 +14,13 @@ const connectDB = require("./utils/db");
 const documentRoutes = require("./routes/documentRoutes");
 const { retrieveRelevantChunks } = require("./utils/retrievalService");
 const {
-  ai,
-  groq,
-  hf,
-  askGemini,
-  askGroq,
-  askHuggingFace,
-  askDocumentAI,
+    ai,
+    groq,
+    hf,
+    askGemini,
+    askGroq,
+    askHuggingFace,
+    askDocumentAI,
 } = require("./aiService");
 
 const {
@@ -88,75 +88,72 @@ app.get("/api/models", (req, res) => {
 });
 
 app.post("/api/documents/ask", async (req, res) => {
-  try {
-    const { question, documentId } = req.body || {};
+    try {
+        const { question, documentId } = req.body || {};
 
-    if (typeof question !== "string" || !question.trim()) {
-      return res.status(400).json({
-        success: false,
-        error: "Please provide a question.",
-      });
+        if (!question || typeof question !== "string") {
+            return res.status(400).json({
+                success: false,
+                error: "Please enter a question.",
+            });
+        }
+
+        if (
+            typeof documentId !== "string" ||
+            !/^[a-f\d]{24}$/i.test(documentId)
+        ) {
+            return res.status(400).json({
+                success: false,
+                error: "Invalid document ID. Please upload the PDF again.",
+            });
+        }
+
+        const chunks = await retrieveRelevantChunks(
+            question.trim(),
+            documentId,
+            4
+        );
+
+        if (chunks.length === 0) {
+            return res.status(404).json({
+                success: false,
+                error: "No document chunks found. Upload a PDF first.",
+            });
+        }
+
+        const context = chunks
+            .map(
+                (chunk, index) =>
+                    `[Source ${index + 1}: ${chunk.filename}, chunk ${chunk.chunkIndex}]\n${chunk.text}`
+            )
+            .join("\n\n");
+
+        console.log("Before askDocumentAI");
+
+const result = await askDocumentAI(question.trim(), context);
+
+console.log("After askDocumentAI");
+
+        return res.status(200).json({
+            success: true,
+            question: question.trim(),
+            answer: result.answer,
+            provider: result.provider,
+            sources: chunks.map((chunk) => ({
+                filename: chunk.filename,
+                chunkIndex: chunk.chunkIndex,
+                similarity: Number(chunk.score.toFixed(4)),
+                text: chunk.text,
+            })),
+        });
+    } catch (error) {
+        console.error("Document Q&A error:", error);
+
+        return res.status(500).json({
+            success: false,
+            error: "Failed to answer the document question.",
+        });
     }
-
-    if (question.trim().length > 2000) {
-      return res.status(400).json({
-        success: false,
-        error: "Question must be 2000 characters or fewer.",
-      });
-    }
-
-    if (
-      documentId !== undefined &&
-      (typeof documentId !== "string" ||
-        !/^[a-f\d]{24}$/i.test(documentId))
-    ) {
-      return res.status(400).json({
-        success: false,
-        error: "Invalid document ID.",
-      });
-    }
-
-    const chunks = await retrieveRelevantChunks(
-      question.trim(),
-      documentId,
-      4
-    );
-
-    if (chunks.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: "No document chunks found. Upload a PDF first.",
-      });
-    }
-
-    const context = chunks
-      .map(
-        (chunk, index) =>
-          `[Source ${index + 1}: ${chunk.filename}, chunk ${chunk.chunkIndex}]\n${chunk.text}`
-      )
-      .join("\n\n");
-
-    const result = await askDocumentAI(question.trim(), context);
-
-    return res.status(200).json({
-      success: true,
-      question: question.trim(),
-      answer: result.answer,
-      provider: result.provider,
-      sources: chunks.map((chunk) => ({
-        filename: chunk.filename,
-        chunkIndex: chunk.chunkIndex,
-        similarity: Number(chunk.score.toFixed(4)),
-      })),
-    });
-  } catch (error) {
-    console.error("Document Q&A error:", error.message);
-
-    return res.status(500).json({
-      success: false,
-      error: "Failed to answer the document question.",
-    });
-  }
 });
 
 // Main research endpoint
