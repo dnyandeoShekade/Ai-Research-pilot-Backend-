@@ -29,40 +29,7 @@ function cosineSimilarity(vectorA, vectorB) {
   return dotProduct / (Math.sqrt(magnitudeA) * Math.sqrt(magnitudeB));
 }
 
-// Find the most relevant chunks for a question
-// async function retrieveRelevantChunks(question, documentId, limit = 4) {
-//   const queryEmbedding = await generateEmbedding(
-//     question,
-//     "search_query"
-//   );
-
-//   const filter = documentId ? { _id: documentId } : {};
-
-//   const documents = await Document.find(filter).select("filename chunks");
-
-//   const results = [];
-
-//   for (const document of documents) {
-//     for (const chunk of document.chunks) {
-//       if (!chunk.embedding || chunk.embedding.length !== queryEmbedding.length) {
-//         continue;
-//       }
-
-//       results.push({
-//         filename: document.filename,
-//         documentId: document._id,
-//         chunkIndex: chunk.index,
-//         text: chunk.text,
-//         score: cosineSimilarity(queryEmbedding, chunk.embedding),
-//       });
-//     }
-//   }
-
-//   results.sort((a, b) => b.score - a.score);
-
-//   return results.slice(0, limit);
-// }
-
+// Find relevant chunks inside the selected PDF
 async function retrieveRelevantChunks(question, documentId, limit = 4) {
   if (!documentId) {
     throw new Error("Please upload and select a PDF first.");
@@ -73,7 +40,7 @@ async function retrieveRelevantChunks(question, documentId, limit = 4) {
     "search_query"
   );
 
-  // Search ONLY inside the selected PDF
+  // Search only inside the selected PDF
   const document = await Document.findById(documentId)
     .select("filename chunks");
 
@@ -95,6 +62,7 @@ async function retrieveRelevantChunks(question, documentId, limit = 4) {
       filename: document.filename,
       documentId: document._id.toString(),
       chunkIndex: chunk.index,
+      pageNumber: chunk.pageNumber || 1,
       text: chunk.text,
       score: cosineSimilarity(queryEmbedding, chunk.embedding),
     });
@@ -102,7 +70,22 @@ async function retrieveRelevantChunks(question, documentId, limit = 4) {
 
   results.sort((a, b) => b.score - a.score);
 
-  return results.slice(0, limit);
+  const MIN_SIMILARITY = Number(
+    process.env.RAG_MIN_SIMILARITY ?? 0.40
+  );
+
+  const relevantResults = results.filter(
+    (chunk) => chunk.score >= MIN_SIMILARITY
+  );
+
+  console.log("RAG threshold:", MIN_SIMILARITY);
+  console.log(
+    "Top scores:",
+    results.slice(0, limit).map((chunk) => chunk.score)
+  );
+  console.log("Chunks after filtering:", relevantResults.length);
+
+  return relevantResults.slice(0, limit);
 }
 
 module.exports = {

@@ -115,9 +115,13 @@ app.post("/api/documents/ask", async (req, res) => {
         );
 
         if (chunks.length === 0) {
-            return res.status(404).json({
-                success: false,
-                error: "No document chunks found. Upload a PDF first.",
+            return res.status(200).json({
+                success: true,
+                question: question.trim(),
+                answer:
+                    "I couldn't find sufficiently relevant information in this document to answer your question. Try asking about a topic covered in the PDF.",
+                provider: "retrieval",
+                sources: [],
             });
         }
 
@@ -130,21 +134,24 @@ app.post("/api/documents/ask", async (req, res) => {
 
         console.log("Before askDocumentAI");
 
-const result = await askDocumentAI(question.trim(), context);
+        const result = await askDocumentAI(question.trim(), context);
 
-console.log("After askDocumentAI");
+        console.log("After askDocumentAI");
 
         return res.status(200).json({
             success: true,
             question: question.trim(),
             answer: result.answer,
             provider: result.provider,
+
             sources: chunks.map((chunk) => ({
                 filename: chunk.filename,
                 chunkIndex: chunk.chunkIndex,
+                pageNumber: chunk.pageNumber,
                 similarity: Number(chunk.score.toFixed(4)),
                 text: chunk.text,
             })),
+
         });
     } catch (error) {
         console.error("Document Q&A error:", error);

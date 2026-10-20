@@ -37,7 +37,7 @@ router.post("/upload", upload.single("pdf"), async (req, res) => {
     }
 
     // Extract PDF text
-   
+
     // Extract PDF text
     parser = new PDFParse({
       data: req.file.buffer,
@@ -55,6 +55,15 @@ router.post("/upload", upload.single("pdf"), async (req, res) => {
 
     // Split the extracted text into chunks
     const chunks = chunkText(text);
+    console.log(
+      "Page numbers assigned:",
+      [...new Set(chunks.map((chunk) => chunk.pageNumber))]
+    );
+    console.log("First 5 chunks:", chunks.slice(0, 5).map((chunk) => ({
+      index: chunk.index,
+      pageNumber: chunk.pageNumber,
+      text: chunk.text.slice(0, 80),
+    })));
 
     if (!chunks || chunks.length === 0) {
       return res.status(400).json({
@@ -80,6 +89,7 @@ router.post("/upload", upload.single("pdf"), async (req, res) => {
       chunksWithEmbeddings.push({
         index: chunk.index,
         text: chunk.text,
+        pageNumber: chunk.pageNumber,
         embedding,
       });
     }
