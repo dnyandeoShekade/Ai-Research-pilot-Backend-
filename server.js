@@ -113,6 +113,10 @@ app.post("/api/documents/ask", async (req, res) => {
             documentId,
             4
         );
+        console.log("✓ Retrieved chunks:", chunks.length);
+        if (chunks.length > 0) {
+            console.log("✓ First chunk keys:", Object.keys(chunks[0]));
+        }
 
         if (chunks.length === 0) {
             return res.status(200).json({
@@ -131,12 +135,13 @@ app.post("/api/documents/ask", async (req, res) => {
                     `[Source ${index + 1}: ${chunk.filename}, chunk ${chunk.chunkIndex}]\n${chunk.text}`
             )
             .join("\n\n");
+        console.log("✓ Context built, length:", context.length);
 
-        console.log("Before askDocumentAI");
+        console.log("→ Calling askDocumentAI...");
 
         const result = await askDocumentAI(question.trim(), context);
 
-        console.log("After askDocumentAI");
+        console.log("✓ AI responded:", { provider: result.provider, hasAnswer: !!result.answer });
 
         return res.status(200).json({
             success: true,
@@ -154,7 +159,9 @@ app.post("/api/documents/ask", async (req, res) => {
 
         });
     } catch (error) {
-        console.error("Document Q&A error:", error);
+        console.error("❌ Document Q&A error:");
+        console.error("Message:", error.message);
+        console.error("Stack:", error.stack);
 
         return res.status(500).json({
             success: false,
