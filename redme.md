@@ -1,3 +1,15 @@
+**ResearchPilot — AI Research & Agentic RAG Platform**
+
+*Technologies: Next.js, React, Node.js, Express, MongoDB, Gemini, Tavily, embeddings, RAG, LLM tool calling*
+
+- Built an AI research application that combines web search, document-based retrieval, LLM-generated research reports, and source-backed claim verification.
+- Implemented a PDF ingestion and retrieval pipeline for answering questions using document content.
+- Developed a research verification workflow that classifies claims as supported, contradicted, or insufficiently evidenced.
+- **Planned enhancement:** Add controlled LLM tool calling to orchestrate web search, document retrieval, and evidence verification, with bounded execution and failure handling.
+- **Planned enhancement:** Improve passage-level citations, automated evaluation, conversation persistence, and production deployment.
+
+
+
 What should you build next?
 Since your goal is to learn RAG and Agentic AI through ResearchPilot, I recommend this order:
 
