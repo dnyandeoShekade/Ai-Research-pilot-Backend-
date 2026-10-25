@@ -35,20 +35,23 @@ async function searchWeb(question) {
 
 // Clean common escaped Markdown characters.
 
+
+
+
 function cleanResearchAnswer(text) {
-  if (typeof text !== "string") {
-    return "";
-  }
+  if (typeof text !== "string") return "";
 
   return text
-    // Remove escaping added before Markdown characters
-    .replace(/\\([#*_[\]()])/g, "$1")
-    .replace(/\\:/g, ":")
-    .replace(/\\\./g, ".")
-    .replace(/\\-/g, "-")
-    .replace(/\\!/g, "!")
+    // Unescape Markdown punctuation
+    .replace(/\\([\\`*_{}\[\]()#+\-.!|>~<>])/g, "$1")
+    // Fix escaped slashes and URL protocols
+    .replace(/\\\//g, "/")
+    .replace(/\\(?=https?:)/gi, "")
+    // Remove whitespace before line breaks
+    .replace(/[ \t]+\n/g, "\n")
     .trim();
 }
+
 
 
 // Normalize a URL for comparison.
@@ -71,57 +74,80 @@ function normalizeUrl(value) {
 
 // Keep citations only when their URLs came from search results.
 // This checks URL provenance, NOT whether the source proves the claim.
+
+
+
 function validateCitationUrls(answer, sources = []) {
-    if (typeof answer !== "string") {
-        return "";
+    const allowedUrls = new Map();
+
+    for (const source of sources) {
+        const normalized = normalizeUrl(source.url);
+
+        if (normalized) {
+            allowedUrls.set(normalized, {
+                title: source.title || "Verified source",
+                url: normalized,
+            });
+        }
     }
 
-    const allowedUrls = new Set(
-        sources
-            .filter(
-                (source) =>
-                    source &&
-                    typeof source.url === "string"
-            )
-            .map((source) => normalizeUrl(source.url))
-            .filter(Boolean)
-    );
+    let result = cleanResearchAnswer(answer);
 
-    // Repair common malformed citation formats, such as:
-    // [- [Title](URL)]
-    // [Title]\(URL\)
-    let repairedAnswer = answer
-        .replace(
-            /\[\s*-\s*\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)\s*\]/g,
-            "[$1]($2)"
-        )
-        .replace(
-            /\[([^\]]+)\]\\\((https?:\/\/[^)\s]+)\\\)/g,
-            "[$1]($2)"
-        );
-
-    // Validate standard Markdown links.
-    const markdownLinkPattern =
-        /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g;
-
-    repairedAnswer = repairedAnswer.replace(
-        markdownLinkPattern,
+    // Keep Markdown links only when their URLs came from Tavily.
+    result = result.replace(
+        /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g,
         (match, title, url) => {
-            const normalizedUrl = normalizeUrl(url);
+            const normalized = normalizeUrl(
+                url.replace(/&amp;/g, "&")
+            );
 
-            if (
-                !normalizedUrl ||
-                !allowedUrls.has(normalizedUrl)
-            ) {
-                return `${title} (unverified link)`;
+            if (!normalized || !allowedUrls.has(normalized)) {
+                return title;
             }
 
-            return `[${title}](${url})`;
+            return `[${title}](${normalized})`;
         }
     );
 
-    return repairedAnswer;
+    // Convert plain-text citation labels into links when their
+    // titles match a source returned by Tavily.
+    for (const source of allowedUrls.values()) {
+        const title = source.title
+            .replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+        const citationPattern = new RegExp(
+            `\\[([^\\]]+)\\]\\(\\s*${title}\\s*\\)`,
+            "gi"
+        );
+
+        result = result.replace(
+            citationPattern,
+            `[${source.title}](${source.url})`
+        );
+    }
+
+    // Remove raw URLs that did not come from Tavily.
+    result = result.replace(
+        /https?:\/\/[^\s<>)\]]+/g,
+        (url) => {
+            const trailing = url.match(/[.,;]+$/)?.[0] || "";
+            const candidate = url.slice(
+                0,
+                url.length - trailing.length
+            );
+
+            const normalized = normalizeUrl(candidate);
+
+            return normalized && allowedUrls.has(normalized)
+                ? candidate + trailing
+                : trailing;
+        }
+    );
+
+    return result;
 }
+
+
 // Score sources by keyword relevance to a claim
 function rankSourcesByRelevance(claim, sources = []) {
     const stopWords = new Set([
@@ -160,10 +186,47 @@ function rankSourcesByRelevance(claim, sources = []) {
         );
 }
 
+function buildVerifiedSources(sources = []) {
+    const seen = new Set();
+
+    const verifiedSources = sources.filter((source) => {
+        const url = normalizeUrl(source.url);
+
+        if (!url || seen.has(url)) {
+            return false;
+        }
+
+        seen.add(url);
+        return true;
+    });
+
+    if (verifiedSources.length === 0) {
+        return "";
+    }
+
+    const sourceLines = verifiedSources.map((source) => {
+        const title = (source.title || "Untitled source")
+            .replace(/[\[\]\r\n]/g, "")
+            .trim();
+
+        const url = normalizeUrl(source.url);
+
+        return `- [${title || "Untitled source"}](${url})`;
+    });
+
+    return `### Sources\n${sourceLines.join("\n")}`;
+}
+
+
+const test = String.raw`\*\*The Technique:\*\* Use \`useMemo\` and \(https\://example.com\)`;
+
+console.log("CLEANER TEST:", cleanResearchAnswer(test));
+
 module.exports = {
     tvly,
     searchWeb,
     cleanResearchAnswer,
     validateCitationUrls,
     rankSourcesByRelevance,
+    buildVerifiedSources,
 };

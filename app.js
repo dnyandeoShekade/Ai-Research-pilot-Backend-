@@ -3,7 +3,7 @@ const cors = require("cors");
 
 const documentRoutes = require("./routes/documentRoutes");
 const apiRoutes = require("./routes/apiRoutes");
-
+const agentRoutes = require("./routes/agentRoutes");
 const app = express();
 
 // Middleware
@@ -19,7 +19,7 @@ app.use(
 app.use(express.json({ limit: "20kb" }));
 app.use("/api/documents", documentRoutes);
 app.use("/api", apiRoutes);
-
+app.use("/api/agent", agentRoutes);
 // Handle invalid JSON bodies
 app.use((error, req, res, next) => {
     if (

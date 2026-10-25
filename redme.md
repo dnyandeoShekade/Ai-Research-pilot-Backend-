@@ -42,3 +42,60 @@ I recommend adding chat history and document selection to ResearchPilot.
 3. Chat interface: Build a ChatGPT-style UI with Next.js and Tailwind CSS.
 4. Conversation history: Store questions and answers in MongoDB.
 5. Answer reliability: Tell the model to say when the retrieved context does not contain the answer.
+
+
+
+
+We are currently at Phase 3: Improving ResearchPilot's answer quality and citation reliability.
+
+Based on our previous tests, your backend is already running, MongoDB is connected, Tavily search is working, and Gemini is generating readable answers.
+
+## ResearchPilot — Current progress
+
+Phase 1: Backend setup and database
+
+Express API and MongoDB Atlas connection
+
+Working
+
+Phase 2: AI research pipeline
+
+Gemini responses and Tavily web search
+
+Working
+
+Phase 3: Citation reliability
+
+Ensure citations link to retrieved sources and avoid unsupported claims.
+
+In progress
+
+Phase 4: Research quality and verification
+
+Check factual claims against retrieved webpages.
+
+Pending
+
+Phase 5: Frontend integration and final testing
+
+Connect the research experience to your Next.js UI and test end to end.
+
+Pending
+
+## Where we stopped
+
+Your latest Insomnia response confirmed:
+
+- The answer's Markdown formatting is readable.
+- The duplicate Sources section is fixed; only one `### Sources` section remains.
+- Tavily search and Gemini answer generation are working.
+
+The next task: open `backend/researchUtils.js` and find this function:
+
+```
+function validateCitationUrls(answer, sources = {}) {
+```
+
+The actual default in your earlier code was `sources = []`, so look for the function name rather than copying the signature exactly.
+
+Paste the complete `validateCitationUrls()` function here. We'll improve it without breaking the working parts of ResearchPilot.
