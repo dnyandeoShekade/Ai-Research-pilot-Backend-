@@ -57,10 +57,10 @@ function cleanResearchAnswer(text) {
 // Normalize a URL for comparison.
 function normalizeUrl(value) {
     try {
-        const url = new URL(value);
+        const url = new URL(value); //Converts the input into a URL object.
 
         if (!["http:", "https:"].includes(url.protocol)) {
-            return null;
+            return null; //Allows only HTTP and HTTPS links.
         }
 
         // Ignore fragments, but preserve path and query.
@@ -68,7 +68,7 @@ function normalizeUrl(value) {
 
         return url.href;
     } catch {
-        return null;
+        return null; //If the URL is invalid, returns null instead of crashing.
     }
 }
 
@@ -76,7 +76,7 @@ function normalizeUrl(value) {
 // This checks URL provenance, NOT whether the source proves the claim.
 
 
-
+// Takes the AI's answer and a list of sources. If no sources are provided, it uses an empty array.
 function validateCitationUrls(answer, sources = []) {
     const allowedUrls = new Map();
 

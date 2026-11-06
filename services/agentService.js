@@ -99,33 +99,6 @@ async function runAgent(question) {
       .filter((part) => part.functionCall)
       .map((part) => part.functionCall);
 
-    // No tool request: the agent has produced its final answer.
-    // if (functionCalls.length === 0) {
-    //   const rawAnswer = response.text?.trim();
-
-    //   if (!rawAnswer) {
-    //     throw new Error("The agent returned an empty answer.");
-    //   }
-
-    //   const cleanedAnswer = cleanResearchAnswer(rawAnswer);
-    //   const validatedAnswer = validateCitationUrls(
-    //     cleanedAnswer,
-    //     allSources
-    //   );
-
-    //   if (!answer) {
-    //     throw new Error("The agent returned an empty answer.");
-    //   }
-
-    //   return {
-    //     answer,
-    //     provider: "gemini",
-    //     toolsUsed: toolCallsMade,
-    //   };
-    // }
-
-
-   
 if (functionCalls.length === 0) {
   console.log("DEBUG: Final-answer block reached");
 
@@ -171,7 +144,6 @@ console.log(
   console.log("CLEANED:", JSON.stringify(cleanedAnswer.slice(0, 250)));
   console.log("VALIDATED:", JSON.stringify(validatedAnswer.slice(0, 250)));
   console.log("FINAL:", JSON.stringify(finalAnswer.slice(0, 250)));
-
   console.log("RAW length:", rawAnswer.length);
   console.log("CLEANED length:", cleanedAnswer.length);
   console.log("ANSWER WITHOUT SOURCES:", answerWithoutSources.length);
@@ -242,5 +214,10 @@ console.log(
 
   throw new Error("Agent stopped unexpectedly.");
 }
+
+
+
+
+
 
 module.exports = { runAgent };
