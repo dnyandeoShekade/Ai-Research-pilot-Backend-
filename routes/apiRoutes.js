@@ -22,7 +22,7 @@ const {
     rankSourcesByRelevance,
 } = require("../researchUtils");
 
-const { verifyClaim } = require("../verificationService");
+const { verifyClaim, extractReportClaims } = require("../verificationService");
 
 // Health check
 router.get("/health", (req, res) => {
@@ -335,38 +335,26 @@ router.post("/research", async (req, res) => {
 
         const validatedAnswer = validateCitationUrls(answer, sources);
 
-        // Verify the original user claim instead of report sentences.
-        const claimChecks = [];
-
-
-        if (claimToVerify.length > 0) {
-            try {
-                // Rank sources by relevance to the claim
-                const relevantSources = rankSourcesByRelevance(
-                    claimToVerify,
-
-                    sources
-                ).slice(0, 5);
-
-                const result = await verifyClaim(
-                    claimToVerify,
-
-                    relevantSources
-                );
-                claimChecks.push(result);
-            } catch (error) {
-                console.error("Claim check failed:", error.message);
-
-                claimChecks.push({
-
-                    claim: claimToVerify,
-                    status: "insufficient_evidence",
-                    explanation:
-                        "Verification could not be completed using the available sources.",
-                    sourceUrls: [],
-
-                });
-            }
+        // Check report-level factual claims against actual retrieved content.
+        let claimChecks = [];
+        try {
+            const reportClaims = await extractReportClaims(validatedAnswer);
+            claimChecks = await Promise.all(reportClaims.map(async (claim) => {
+                const relevantSources = rankSourcesByRelevance(claim, sources).slice(0, 5);
+                try {
+                    return await verifyClaim(claim, relevantSources);
+                } catch (error) {
+                    console.error("Claim check failed:", error.message);
+                    return {
+                        claim,
+                        status: "insufficient_evidence",
+                        explanation: "Verification could not be completed using the available sources.",
+                        sourceUrls: [],
+                    };
+                }
+            }));
+        } catch (error) {
+            console.error("Report claim verification failed:", error.message);
         }
 
         // Return the completed research response

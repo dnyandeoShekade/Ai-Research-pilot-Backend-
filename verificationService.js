@@ -1,9 +1,78 @@
 
 const {
+  ai,
+  groq,
+  hf,
   askGemini,
   askGroq,
   askHuggingFace,
 } = require("./aiService");
+
+const MAX_REPORT_CLAIMS = 5;
+
+function parseClaims(raw) {
+  const cleaned = String(raw || "")
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+  const parsed = JSON.parse(cleaned);
+  const claims = Array.isArray(parsed) ? parsed : parsed.claims;
+
+  if (!Array.isArray(claims)) {
+    throw new Error("The claim extractor returned an invalid response.");
+  }
+
+  return [...new Set(claims
+    .filter((claim) => typeof claim === "string")
+    .map((claim) => claim.trim())
+    .filter((claim) => claim.length >= 20 && claim.length <= 500))]
+    .slice(0, MAX_REPORT_CLAIMS);
+}
+
+async function extractReportClaims(report) {
+  const prompt = `Extract up to ${MAX_REPORT_CLAIMS} specific, checkable factual claims from this research report. Ignore recommendations, opinions, headings, and unsupported general advice. Preserve dates, quantities, and named entities. Return only JSON as {"claims":["..."]}. If there are no factual claims, return {"claims":[]}.\n\nREPORT:\n${report.slice(0, 12000)}`;
+
+  if (ai) {
+    try {
+      const response = await ai.models.generateContent({
+        model: "gemini-flash-lite-latest",
+        contents: prompt,
+        config: { responseMimeType: "application/json" },
+      });
+      return parseClaims(response.text);
+    } catch (error) {
+      console.warn("Gemini claim extraction failed:", error.message);
+    }
+  }
+
+  if (groq) {
+    try {
+      const response = await groq.chat.completions.create({
+        model: "llama-3.3-70b-versatile",
+        messages: [{ role: "user", content: prompt }],
+        response_format: { type: "json_object" },
+      });
+      return parseClaims(response.choices[0]?.message?.content);
+    } catch (error) {
+      console.warn("Groq claim extraction failed:", error.message);
+    }
+  }
+
+  if (hf) {
+    try {
+      const response = await hf.chat.completions.create({
+        model: "Qwen/Qwen2.5-7B-Instruct:fastest",
+        messages: [{ role: "user", content: prompt }],
+        response_format: { type: "json_object" },
+      });
+      return parseClaims(response.choices[0]?.message?.content);
+    } catch (error) {
+      console.warn("Hugging Face claim extraction failed:", error.message);
+    }
+  }
+
+  return [];
+}
 
 async function verifyClaim(claim, sources = []) {
   if (typeof claim !== "string" || !claim.trim()) {
@@ -178,4 +247,4 @@ STRICT RULES:
   };
 }
 
-module.exports = { verifyClaim };
+module.exports = { verifyClaim, extractReportClaims };
